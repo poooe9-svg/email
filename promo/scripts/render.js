@@ -1,7 +1,10 @@
-// Renders reel.html to an Instagram-ready MP4.
+// Renders a reel page to an Instagram-ready MP4.
 //
-//   node scripts/render.js              crisp 30fps render (default)
-//   node scripts/render.js --blur 8     true motion blur from 8 subframes/frame (~8x slower)
+//   node scripts/render.js                   15s reel (reel.html)
+//   node scripts/render.js --reel reel-30    30s reel (reel-30.html)
+//   node scripts/render.js --blur 8          true motion blur from 8 subframes/frame (~8x slower)
+//
+// Output names, duration and cover time come from the page's window.REEL.
 //
 // How it works: every frame is a pure function of time (window.seek(t)), so we
 // capture frames in parallel headless Chromium instances, optionally average
@@ -22,14 +25,18 @@ const FPS = 30;
 const blurAt = args.indexOf("--blur");
 const SUB = blurAt >= 0 ? Math.max(1, Number(args[blurAt + 1]) || 8) : 1;
 const WORKERS = Number(process.env.WORKERS || 4);
-const AUDIO = path.join(OUT, "voniweb-reel-audio.wav");
+const reelAt = args.indexOf("--reel");
+const PAGE = "file://" + path.join(ROOT, `${reelAt >= 0 ? args[reelAt + 1] : "reel"}.html`) + "?render";
+// Size budget: keeps every reel under 27 MiB so it can be sent/shared directly.
+// Instagram re-encodes Reels to a few Mbps, so going higher buys nothing.
+const MAX_BYTES = 27 * 1024 * 1024;
 
 async function renderChunk(worker, frames, total, progress) {
   // one browser per worker: pages in a shared browser serialise their screenshots
   const browser = await chromium.launch({ executablePath: browserPath() });
   const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });
   page.on("pageerror", (e) => console.error(`[w${worker}] PAGE ERROR: ${e.message}`));
-  await page.goto("file://" + path.join(ROOT, "reel.html") + "?render");
+  await page.goto(PAGE);
   await page.waitForFunction(() => window.READY === true);
   for (const i of frames) {
     const t = i / (FPS * SUB);
@@ -52,8 +59,17 @@ function ffmpeg(argv) {
   fs.rmSync(FRAMES, { recursive: true, force: true });
   fs.mkdirSync(FRAMES, { recursive: true });
 
-  const durationSec = 15;
-  const total = durationSec * FPS * SUB;
+  const meta = await (async () => {
+    const b = await chromium.launch({ executablePath: browserPath() });
+    const p = await b.newPage({ viewport: { width: 1080, height: 1920 } });
+    await p.goto(PAGE); await p.waitForFunction(() => window.READY === true);
+    const r = await p.evaluate(() => window.REEL); await b.close(); return r;
+  })();
+  const NAME = meta.NAME || "voniweb-reel";
+  const AUDIO = path.join(OUT, `${NAME}-audio.wav`);
+  const durationSec = meta.DURATION;
+  const total = Math.round(durationSec * FPS * SUB);
+  const kbps = Math.min(14000, Math.floor((MAX_BYTES * 8 / durationSec - 300000) / 1000));
   console.log(`Rendering ${total} frames (${FPS}fps x${SUB} subframes) with ${WORKERS} workers...`);
   const t0 = Date.now();
 
@@ -78,40 +94,39 @@ function ffmpeg(argv) {
   const video = [
     "-framerate", String(FPS * SUB), "-i", path.join(FRAMES, "%05d.png"),
   ];
-  // Two-pass at 14 Mbps: predictable ~26 MB file, well above what Instagram keeps after
-  // its own re-encode, so nothing is lost by not going higher.
+  // two-pass ABR: predictable file size
   const enc = [
     "-vf", vf, "-r", String(FPS),
-    "-c:v", "libx264", "-preset", "slow", "-b:v", "14M", "-maxrate", "20M", "-bufsize", "28M",
+    "-c:v", "libx264", "-preset", "slow", "-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.4)}k`, "-bufsize", `${kbps * 2}k`,
     "-tune", "grain", "-profile:v", "high", "-level", "4.2",
     "-g", String(FPS), "-bf", "2",
     "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
     "-movflags", "+faststart", "-t", String(durationSec),
   ];
 
-  const silent = path.join(OUT, "voniweb-reel-silent.mp4");
+  const silent = path.join(OUT, `${NAME}-silent.mp4`);
   console.log("Encoding silent master...");
   const passlog = path.join(FRAMES, "x264pass");
   ffmpeg([...video, ...enc, "-pass", "1", "-passlogfile", passlog, "-an", "-f", "null", process.platform === "win32" ? "NUL" : "/dev/null"]);
   ffmpeg([...video, ...enc, "-pass", "2", "-passlogfile", passlog, "-an", silent]);
 
   if (fs.existsSync(AUDIO)) {
-    const withAudio = path.join(OUT, "voniweb-reel.mp4");
+    const withAudio = path.join(OUT, `${NAME}.mp4`);
     console.log("Muxing audio...");
     ffmpeg(["-i", silent, "-i", AUDIO, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
       "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-t", String(durationSec), "-movflags", "+faststart", withAudio]);
     console.log("  ->", path.relative(ROOT, withAudio));
   } else {
-    console.log("  (no out/voniweb-reel-audio.wav — run `npm run audio` first to get the sound-designed version)");
+    console.log(`  (no out/${NAME}-audio.wav — generate the audio first for the sound-designed version)`);
   }
   console.log("  ->", path.relative(ROOT, silent));
 
   // Cover image for the Reel (the hook, fully on screen). Instagram's profile grid
   // crops covers to the centre 3:4, which this frame survives.
   {
-    const coverFrame = Math.round(1.55 * FPS * SUB);
-    fs.copyFileSync(path.join(FRAMES, `${String(coverFrame).padStart(5, "0")}.png`), path.join(OUT, "voniweb-reel-cover.png"));
-    console.log("  -> out/voniweb-reel-cover.png");
+    const coverFrame = Math.round((meta.COVER_T ?? 1.55) * FPS * SUB);
+    fs.copyFileSync(path.join(FRAMES, `${String(coverFrame).padStart(5, "0")}.png`), path.join(OUT, `${NAME}-cover.png`));
+    console.log(`  -> out/${NAME}-cover.png`);
   }
   if (!args.includes("--keep-frames")) fs.rmSync(FRAMES, { recursive: true, force: true });
   console.log(`Done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);

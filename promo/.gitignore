@@ -1,5 +1,5 @@
 out/.frames/
-out/.audio-raw.wav
+out/.audio*-raw.wav
 out/stills/
-out/voniweb-reel-silent.mp4
-out/voniweb-reel-audio.wav
+out/*-silent.mp4
+out/*-audio.wav

@@ -128,5 +128,6 @@ and logs that all accounts are at capacity.
 
 ## Promo reel
 
-`promo/` contains a 15-second Instagram Reel for Voniweb, built in code (GSAP + Playwright + FFmpeg).
-The finished video is `promo/out/voniweb-reel.mp4`; see [`promo/README.md`](promo/README.md) to edit and re-render it.
+`promo/` contains two Instagram Reels for Voniweb, built in code (GSAP + Playwright + FFmpeg):
+`promo/out/voniweb-reel-30s.mp4` (brand film) and `promo/out/voniweb-reel.mp4` (15s audit teaser).
+See [`promo/README.md`](promo/README.md) to edit and re-render them.

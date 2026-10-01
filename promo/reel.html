@@ -710,7 +710,7 @@ function frameEffects(t) {
 
 /* the one entry point the renderer calls */
 window.seek = (t) => { tl.seek(t, true); frameEffects(t); };
-window.REEL = { DURATION, BEAT, W, H };
+window.REEL = { DURATION, BEAT, W, H, NAME: "voniweb-reel", COVER_T: 1.55 };
 
 /* initialise: measure, prime every tween in order, then go to frame 0 */
 function init(renderMode) {
