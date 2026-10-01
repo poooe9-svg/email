@@ -21,7 +21,10 @@
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `POST ${path} failed: ${res.status}`);
+    }
     return res.json();
   }
 
@@ -295,6 +298,21 @@
     setTimeout(() => toast.remove(), 12000);
   }
 
+  function showErrorToast(message) {
+    const toast = document.createElement("div");
+    toast.className =
+      "log-line rounded-lg border border-rose-700 bg-rose-950 text-rose-200 px-4 py-3 shadow-lg max-w-sm text-xs cursor-pointer";
+    toast.textContent = message;
+    toast.addEventListener("click", () => toast.remove());
+    el("toast-container").appendChild(toast);
+    setTimeout(() => toast.remove(), 12000);
+  }
+
+  /** Runs a button action, surfacing server errors instead of failing silently. */
+  function action(fn) {
+    return () => fn().catch((err) => showErrorToast(err.message)).finally(refreshState);
+  }
+
   // ---------- WebSocket ----------
 
   function connectWebSocket() {
@@ -338,9 +356,13 @@
   // ---------- Wiring ----------
 
   function init() {
-    el("btn-start").addEventListener("click", () => apiPost("/start").then(refreshState));
-    el("btn-pause").addEventListener("click", () => apiPost("/pause").then(refreshState));
-    el("btn-stop").addEventListener("click", () => apiPost("/stop").then(refreshState));
+    el("btn-start").addEventListener("click", action(() => apiPost("/start")));
+    el("btn-pause").addEventListener("click", action(() => apiPost("/pause")));
+    el("btn-stop").addEventListener("click", action(() => apiPost("/stop")));
+    el("btn-retry-failed").addEventListener(
+      "click",
+      action(() => apiPost("/leads/retry-failed").then(loadLeads))
+    );
 
     document.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => setFilter(btn.dataset.filter)));
 

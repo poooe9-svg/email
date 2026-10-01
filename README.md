@@ -68,7 +68,7 @@ Five independent worker loops (the "5 sub-agents") walk this pipeline every
 
 ```bash
 npm install
-npx playwright install chromium   # if postinstall didn't already fetch it
+npx playwright install chromium   # browser used by the web auditor (required)
 cp .env.example .env
 # edit .env: ANTHROPIC_API_KEY, SENDER_NAME, and at least one SMTP_1_* block
 npm run dev
@@ -105,6 +105,10 @@ and logs that all accounts are at capacity.
    pop a toast and jump the lead to the top of the **Interested** tab.
 5. Click any lead row to see its audit flaws, the exact email sent, and the
    reply — and to manually mark a meeting booked.
+6. If setup is wrong (no Chromium, bad API key or model, rejected SMTP login)
+   the campaign pauses with the fix in the log instead of failing every lead.
+   After fixing it, click **Retry failed** to re-queue leads that failed
+   earlier, then **START CAMPAIGN** again.
 
 ## Scripts
 

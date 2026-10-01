@@ -16,7 +16,9 @@ export function log(
   message: string,
   level: DispatchLogEntry["level"] = "info"
 ): DispatchLogEntry {
-  const entry = insertLogEntry({ level, worker, message });
+  // Playwright errors carry terminal color codes, which render as junk in the dashboard.
+  const clean = message.replace(/\x1b\[[0-9;]*m/g, "").trim();
+  const entry = insertLogEntry({ level, worker, message: clean });
   for (const listener of listeners) listener(entry);
 
   logCount++;

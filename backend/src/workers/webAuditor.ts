@@ -4,6 +4,7 @@ import { findLeadsByStatus, insertAudit, updateLeadContact, updateLeadStatus } f
 import { logger } from "../services/logger";
 import { summarizeAuditFlaws } from "../services/claudeClient";
 import { emitAppEvent } from "../services/events";
+import { asSetupError } from "../services/setupError";
 import type { Lead } from "../types";
 
 const WORKER = "auditor";
@@ -156,6 +157,13 @@ export async function auditLead(lead: Lead): Promise<void> {
     emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "AUDITED" } });
     logger.success(WORKER, `Audit complete for ${lead.domain}: ${flaws.flaws.length} flaw(s) found.`);
   } catch (err) {
+    const setupError = asSetupError(err);
+    if (setupError) {
+      // Not this lead's fault: put it back in the queue and let the controller pause.
+      updateLeadStatus(lead.id, "NEW");
+      emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "NEW" } });
+      throw setupError;
+    }
     updateLeadStatus(lead.id, "AUDIT_FAILED");
     emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "AUDIT_FAILED" } });
     logger.error(WORKER, `Audit failed for ${lead.domain}: ${(err as Error).message}`);

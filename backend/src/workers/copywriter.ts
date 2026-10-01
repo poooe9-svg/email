@@ -2,6 +2,7 @@ import { findLeadsByStatus, getLatestAuditForLead, saveDraft, updateLeadStatus }
 import { writeColdEmail } from "../services/claudeClient";
 import { logger } from "../services/logger";
 import { emitAppEvent } from "../services/events";
+import { asSetupError } from "../services/setupError";
 import type { Lead } from "../types";
 
 const WORKER = "copywriter";
@@ -45,6 +46,9 @@ export async function draftEmailForLead(lead: Lead): Promise<void> {
     logger.success(WORKER, `Draft ready for ${lead.domain}: "${subject}"`);
   } catch (err) {
     updateLeadStatus(lead.id, "AUDITED"); // retry-able: back to AUDITED so it can be re-picked
+    emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "AUDITED" } });
+    const setupError = asSetupError(err);
+    if (setupError) throw setupError;
     logger.error(WORKER, `Copywriting failed for ${lead.domain}: ${(err as Error).message}`);
   }
 }

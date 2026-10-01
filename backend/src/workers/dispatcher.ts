@@ -4,6 +4,7 @@ import { getRemainingCapacityToday, pickAvailableAccount, sendMail } from "../se
 import { dailyTargetReached } from "../services/rateLimiter";
 import { logger } from "../services/logger";
 import { emitAppEvent } from "../services/events";
+import { asSetupError } from "../services/setupError";
 import type { Lead } from "../types";
 
 const WORKER = "dispatcher";
@@ -57,6 +58,12 @@ export async function sendLeadEmail(lead: Lead): Promise<boolean> {
     logger.success(WORKER, `Sent to ${lead.domain} via ${account.key}.`);
     return true;
   } catch (err) {
+    const setupError = asSetupError(err);
+    if (setupError) {
+      updateLeadStatus(lead.id, "READY_TO_SEND"); // draft is intact, send it once the login is fixed
+      emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "READY_TO_SEND" } });
+      throw new Error(`${account.key}: ${setupError.message}`, { cause: setupError });
+    }
     updateLeadStatus(lead.id, "SEND_FAILED");
     emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "SEND_FAILED" } });
     logger.error(WORKER, `Send failed for ${lead.domain} via ${account.key}: ${(err as Error).message}`);

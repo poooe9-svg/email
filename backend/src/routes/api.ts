@@ -10,11 +10,13 @@ import {
   incrementMeetingsBooked,
   insertLead,
   listLeads,
+  retryFailedLeads,
   updateLeadStatus,
 } from "../db/db";
 import { getRemainingCapacityToday } from "../services/smtpPool";
 import { pauseCampaign, startCampaign, stopCampaign, getControllerState } from "../controller/masterController";
 import { emitAppEvent } from "../services/events";
+import { logger } from "../services/logger";
 
 export const apiRouter = Router();
 
@@ -31,8 +33,11 @@ apiRouter.get("/state", (_req: Request, res: Response) => {
 });
 
 apiRouter.post("/start", (_req: Request, res: Response) => {
-  const status = startCampaign();
-  res.json({ status });
+  try {
+    res.json({ status: startCampaign() });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 apiRouter.post("/pause", (_req: Request, res: Response) => {
@@ -121,6 +126,12 @@ apiRouter.post("/leads/bulk", (req: Request, res: Response) => {
     else skipped.push(item.domain);
   }
   res.status(201).json({ created: created.length, skipped });
+});
+
+apiRouter.post("/leads/retry-failed", (_req: Request, res: Response) => {
+  const requeued = retryFailedLeads();
+  logger.info("api", `Re-queued ${requeued} failed lead(s).`);
+  res.json({ requeued });
 });
 
 apiRouter.post("/leads/:id/mark-meeting-booked", (req: Request, res: Response) => {

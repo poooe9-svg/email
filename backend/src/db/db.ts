@@ -126,6 +126,26 @@ export function findLeadByDomainOrEmail(domain: string, email: string | null): L
   );
 }
 
+/** Re-queues failed leads, e.g. after fixing the setup problem that failed them. */
+export function retryFailedLeads(): number {
+  return db.transaction(() => {
+    // Back through discovery so malformed domains are re-validated rather than re-audited.
+    const audits = db
+      .prepare("UPDATE leads SET status = 'DISCOVERED', updated_at = datetime('now') WHERE status = 'AUDIT_FAILED'")
+      .run().changes;
+    // Leads that failed for lack of an address would just fail again, so leave those.
+    const sends = db
+      .prepare(
+        `UPDATE leads SET
+           status = CASE WHEN draft_subject IS NOT NULL AND draft_body IS NOT NULL THEN 'READY_TO_SEND' ELSE 'AUDITED' END,
+           updated_at = datetime('now')
+         WHERE status = 'SEND_FAILED' AND contact_email IS NOT NULL`
+      )
+      .run().changes;
+    return audits + sends;
+  })();
+}
+
 /** Leads left mid-step by a crash/restart would otherwise sit in a transient status forever. */
 export function recoverInterruptedLeads(): { auditing: number; drafting: number } {
   const auditing = db

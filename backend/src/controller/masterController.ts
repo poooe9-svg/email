@@ -9,6 +9,7 @@ import { runAuditorTick, closeAuditorBrowser } from "../workers/webAuditor";
 import { runCopywriterTick } from "../workers/copywriter";
 import { runDispatcherTick } from "../workers/dispatcher";
 import { runReplyTriageTick } from "../workers/replyTriage";
+import { asSetupError, SetupError } from "../services/setupError";
 import type { CampaignStatus } from "../types";
 
 const WORKER = "controller";
@@ -25,6 +26,16 @@ let loopsActive = false;
 // clicked again before they noticed the STOPPED status.
 let generation = 0;
 
+/** Setup problems would fail every lead the same way, so stop work until they're fixed. */
+function handleWorkerError(name: string, err: unknown): void {
+  if (asSetupError(err) || asSetupError((err as Error)?.cause)) {
+    logger.error(name, `${(err as Error).message} Campaign paused.`);
+    if (isRunning()) pauseCampaign();
+    return;
+  }
+  logger.error(name, `Unhandled error: ${(err as Error).message}`);
+}
+
 /** Generic loop shell: waits while PAUSED, exits entirely when STOPPED. */
 async function runLoop(name: string, tickIntervalMs: number, tick: () => Promise<void>): Promise<void> {
   const gen = generation;
@@ -36,7 +47,7 @@ async function runLoop(name: string, tickIntervalMs: number, tick: () => Promise
     try {
       await tick();
     } catch (err) {
-      logger.error(name, `Unhandled error: ${(err as Error).message}`);
+      handleWorkerError(name, err);
     }
     await interruptibleSleep(tickIntervalMs, () => !isRunning());
   }
@@ -75,7 +86,7 @@ async function dispatcherLoop(): Promise<void> {
     try {
       sent = await runDispatcherTick();
     } catch (err) {
-      logger.error("dispatcher", `Unhandled error: ${(err as Error).message}`);
+      handleWorkerError("dispatcher", err);
     }
     // Only burn a full randomized human-like delay after an actual send;
     // otherwise poll again quickly for the next ready draft.
@@ -102,7 +113,11 @@ function ensureLoopsStarted(): void {
   }
 }
 
+/** Throws SetupError when starting would just fail every lead. */
 export function startCampaign(): CampaignStatus {
+  if (!config.anthropicApiKey) {
+    throw new SetupError("ANTHROPIC_API_KEY is not set. Add it to .env and restart the server before starting.");
+  }
   const state = setCampaignStatus("RUNNING");
   logger.success(WORKER, "Campaign started.");
   emitAppEvent({ type: "state_change", payload: { status: state.status } });
