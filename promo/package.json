@@ -1,0 +1,19 @@
+{
+  "name": "voniweb-promo-reel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "15s Instagram Reel for Voniweb, built with GSAP and rendered frame-by-frame with Playwright + ffmpeg",
+  "scripts": {
+    "preview": "node scripts/preview.js",
+    "audio": "node scripts/audio.js",
+    "render": "node scripts/audio.js && node scripts/render.js",
+    "stills": "node scripts/stills.js"
+  },
+  "dependencies": {
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@fontsource/inter-tight": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "gsap": "^3.15.0",
+    "playwright-core": "^1.63.0"
+  }
+}

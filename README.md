@@ -125,3 +125,8 @@ and logs that all accounts are at capacity.
   personalized pitch, not a guarantee of accuracy.
 - `ANTHROPIC_MODEL` defaults to the latest Claude model; pin an older one in
   `.env` if you specifically need it.
+
+## Promo reel
+
+`promo/` contains a 15-second Instagram Reel for Voniweb, built in code (GSAP + Playwright + FFmpeg).
+The finished video is `promo/out/voniweb-reel.mp4`; see [`promo/README.md`](promo/README.md) to edit and re-render it.
