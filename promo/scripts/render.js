@@ -78,9 +78,12 @@ function ffmpeg(argv) {
   const video = [
     "-framerate", String(FPS * SUB), "-i", path.join(FRAMES, "%05d.png"),
   ];
+  // Two-pass at 14 Mbps: predictable ~26 MB file, well above what Instagram keeps after
+  // its own re-encode, so nothing is lost by not going higher.
   const enc = [
     "-vf", vf, "-r", String(FPS),
-    "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-tune", "grain", "-profile:v", "high", "-level", "4.2",
+    "-c:v", "libx264", "-preset", "slow", "-b:v", "14M", "-maxrate", "20M", "-bufsize", "28M",
+    "-tune", "grain", "-profile:v", "high", "-level", "4.2",
     "-g", String(FPS), "-bf", "2",
     "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
     "-movflags", "+faststart", "-t", String(durationSec),
@@ -88,7 +91,9 @@ function ffmpeg(argv) {
 
   const silent = path.join(OUT, "voniweb-reel-silent.mp4");
   console.log("Encoding silent master...");
-  ffmpeg([...video, ...enc, "-an", silent]);
+  const passlog = path.join(FRAMES, "x264pass");
+  ffmpeg([...video, ...enc, "-pass", "1", "-passlogfile", passlog, "-an", "-f", "null", process.platform === "win32" ? "NUL" : "/dev/null"]);
+  ffmpeg([...video, ...enc, "-pass", "2", "-passlogfile", passlog, "-an", silent]);
 
   if (fs.existsSync(AUDIO)) {
     const withAudio = path.join(OUT, "voniweb-reel.mp4");
