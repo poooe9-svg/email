@@ -66,6 +66,19 @@ Five independent worker loops (the "5 sub-agents") walk this pipeline every
 
 ## Setup
 
+### Windows (one click)
+
+1. Install **Node.js LTS** from https://nodejs.org (version 20 or newer).
+2. Put this project folder anywhere on your PC (e.g. unzip it to your Desktop).
+3. Double-click **`start.bat`**. On first run it installs dependencies and
+   Chromium, opens `.env` in Notepad for your API key and SMTP accounts, then
+   starts the engine and opens **http://localhost:3000**.
+4. Keep the black window open while you use the dashboard; closing it stops
+   the engine. "localhost refused to connect" in the browser means that
+   window isn't running.
+
+### Manual (any OS)
+
 ```bash
 npm install
 npx playwright install chromium   # browser used by the web auditor (required)

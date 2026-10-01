@@ -42,7 +42,8 @@ export const config = {
   port: envInt("PORT", 3000),
   dbPath: path.resolve(__dirname, "../../db/leads.db"),
 
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
+  // The .env.example placeholder counts as unset, so START explains what's missing.
+  anthropicApiKey: /your-key-here/.test(process.env.ANTHROPIC_API_KEY ?? "") ? "" : process.env.ANTHROPIC_API_KEY || "",
   anthropicModel: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
 
   agencyName: process.env.AGENCY_NAME || "Voniweb",
