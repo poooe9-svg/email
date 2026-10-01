@@ -56,7 +56,7 @@ export function insertLead(input: {
       domain: input.domain.trim().toLowerCase(),
       niche: input.niche ?? null,
       contact_name: input.contact_name ?? null,
-      contact_email: input.contact_email ?? null,
+      contact_email: input.contact_email?.trim().toLowerCase() || null,
     });
     return getLeadById(Number(info.lastInsertRowid));
   } catch {
@@ -112,10 +112,29 @@ export function clearDraft(leadId: number): void {
 
 export function findLeadByDomainOrEmail(domain: string, email: string | null): Lead | null {
   if (email) {
-    const byEmail = db.prepare("SELECT * FROM leads WHERE contact_email = ?").get(email) as Lead | undefined;
+    const byEmail = db
+      .prepare("SELECT * FROM leads WHERE lower(contact_email) = lower(?)")
+      .get(email) as Lead | undefined;
     if (byEmail) return byEmail;
   }
-  return (db.prepare("SELECT * FROM leads WHERE domain = ?").get(domain) as Lead) ?? null;
+  if (!domain) return null;
+  const host = domain.toLowerCase().replace(/^www\./, "");
+  return (
+    (db
+      .prepare("SELECT * FROM leads WHERE domain IN (?, ?) ORDER BY updated_at DESC LIMIT 1")
+      .get(host, `www.${host}`) as Lead) ?? null
+  );
+}
+
+/** Leads left mid-step by a crash/restart would otherwise sit in a transient status forever. */
+export function recoverInterruptedLeads(): { auditing: number; drafting: number } {
+  const auditing = db
+    .prepare("UPDATE leads SET status = 'NEW', updated_at = datetime('now') WHERE status = 'AUDITING'")
+    .run().changes;
+  const drafting = db
+    .prepare("UPDATE leads SET status = 'AUDITED', updated_at = datetime('now') WHERE status = 'DRAFTING'")
+    .run().changes;
+  return { auditing, drafting };
 }
 
 // ---------- Audits ----------

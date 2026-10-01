@@ -1,5 +1,5 @@
 import { config } from "../config";
-import { getCampaignState, setCampaignStatus } from "../db/db";
+import { getCampaignState, recoverInterruptedLeads, setCampaignStatus } from "../db/db";
 import { logger } from "../services/logger";
 import { emitAppEvent } from "../services/events";
 import { randomSendDelayMs } from "../services/smtpPool";
@@ -21,10 +21,14 @@ function isStopped(): boolean {
 }
 
 let loopsActive = false;
+// Bumped on every STOP so loops from a previous run exit even if START is
+// clicked again before they noticed the STOPPED status.
+let generation = 0;
 
 /** Generic loop shell: waits while PAUSED, exits entirely when STOPPED. */
 async function runLoop(name: string, tickIntervalMs: number, tick: () => Promise<void>): Promise<void> {
-  while (!isStopped()) {
+  const gen = generation;
+  while (!isStopped() && gen === generation) {
     if (!isRunning()) {
       await interruptibleSleep(500, () => isRunning() || isStopped());
       continue;
@@ -57,7 +61,8 @@ async function copywriterLoop(): Promise<void> {
 }
 
 async function dispatcherLoop(): Promise<void> {
-  while (!isStopped()) {
+  const gen = generation;
+  while (!isStopped() && gen === generation) {
     if (!isRunning()) {
       await interruptibleSleep(500, () => isRunning() || isStopped());
       continue;
@@ -117,6 +122,7 @@ export function stopCampaign(): CampaignStatus {
   logger.warn(WORKER, "Campaign stopped. Worker loops will exit; restart to resume.");
   emitAppEvent({ type: "state_change", payload: { status: state.status } });
   loopsActive = false;
+  generation++;
   closeAuditorBrowser().catch(() => {});
   return state.status;
 }
@@ -128,6 +134,13 @@ export function getControllerState() {
 /** Call once at process boot: if the DB says a campaign was RUNNING/PAUSED from a
  * previous run, restart the worker loops so the dashboard reflects reality. */
 export function resumeLoopsIfNeeded(): void {
+  const recovered = recoverInterruptedLeads();
+  if (recovered.auditing + recovered.drafting > 0) {
+    logger.warn(
+      WORKER,
+      `Re-queued ${recovered.auditing} lead(s) stuck in AUDITING and ${recovered.drafting} stuck in DRAFTING from the last run.`
+    );
+  }
   const state = getCampaignState();
   if (state.status === "RUNNING" || state.status === "PAUSED") {
     ensureLoopsStarted();

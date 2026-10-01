@@ -123,8 +123,8 @@
   <div id="add-lead-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-5">
       <h2 class="text-sm font-semibold text-white mb-1">Add Target Leads</h2>
-      <p class="text-xs text-slate-400 mb-3">One per line: <code class="text-slate-300">domain.com, niche</code>. Niche is optional.</p>
-      <textarea id="bulk-leads-input" rows="8" class="w-full rounded-md bg-slate-950 border border-slate-700 p-3 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="acmeplumbing.com, plumbing
+      <p class="text-xs text-slate-400 mb-3">One per line: <code class="text-slate-300">domain.com, niche, contact name, email</code>. Only the domain is required; without an email the auditor looks for one on the site.</p>
+      <textarea id="bulk-leads-input" rows="8" class="w-full rounded-md bg-slate-950 border border-slate-700 p-3 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="acmeplumbing.com, plumbing, John, john@acmeplumbing.com
 example-bakery.ma, bakery"></textarea>
       <div class="mt-4 flex justify-end gap-2">
         <button id="btn-cancel-add" class="px-3 py-1.5 rounded-md text-xs text-slate-300 hover:text-white">Cancel</button>

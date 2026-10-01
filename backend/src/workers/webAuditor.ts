@@ -1,6 +1,6 @@
 import { chromium, type Browser } from "playwright";
 import { config } from "../config";
-import { findLeadsByStatus, insertAudit, updateLeadStatus } from "../db/db";
+import { findLeadsByStatus, insertAudit, updateLeadContact, updateLeadStatus } from "../db/db";
 import { logger } from "../services/logger";
 import { summarizeAuditFlaws } from "../services/claudeClient";
 import { emitAppEvent } from "../services/events";
@@ -38,6 +38,20 @@ interface RawSignals {
   loadTimeMs: number;
   pageTitle: string | null;
   outdatedUISignals: string[];
+  contactEmails: string[];
+}
+
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const JUNK_EMAIL_RE = /\.(png|jpe?g|gif|webp|svg)$|@(example|sentry|wixpress|domain)\./i;
+
+/** Pulls contact addresses from mailto: links and page text, same-domain addresses first. */
+function extractContactEmails(html: string, mailtos: string[], domain: string): string[] {
+  const host = domain.replace(/^https?:\/\//i, "").replace(/\/.*$/, "").replace(/^www\./i, "").toLowerCase();
+  const found = [...mailtos, ...(html.match(EMAIL_RE) ?? [])]
+    .map((e) => decodeURIComponent(e).replace(/^mailto:/i, "").split("?")[0].trim().toLowerCase())
+    .filter((e) => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e) && !JUNK_EMAIL_RE.test(e));
+  const unique = [...new Set(found)];
+  return unique.sort((a, b) => Number(b.endsWith(`@${host}`)) - Number(a.endsWith(`@${host}`)));
 }
 
 async function scrapeSignals(browser: Browser, domain: string): Promise<RawSignals> {
@@ -91,7 +105,12 @@ async function scrapeSignals(browser: Browser, domain: string): Promise<RawSigna
       .catch(() => false);
     if (hasHorizontalOverflow) outdatedUISignals.push("Content overflows horizontally on mobile viewport");
 
-    return { finalUrl, hasSSL, hasViewportMeta, loadTimeMs, pageTitle, outdatedUISignals };
+    const mailtos = await page
+      .$$eval('a[href^="mailto:" i]', (links) => links.map((a) => a.getAttribute("href") || ""))
+      .catch(() => [] as string[]);
+    const contactEmails = extractContactEmails(bodyHtml, mailtos, domain);
+
+    return { finalUrl, hasSSL, hasViewportMeta, loadTimeMs, pageTitle, outdatedUISignals, contactEmails };
   } finally {
     await context.close().catch(() => {});
   }
@@ -105,6 +124,11 @@ export async function auditLead(lead: Lead): Promise<void> {
   try {
     const browser = await getBrowser();
     const signals = await scrapeSignals(browser, lead.domain);
+    if (!lead.contact_email && signals.contactEmails.length > 0) {
+      updateLeadContact(lead.id, signals.contactEmails[0], null);
+      logger.info(WORKER, `Found contact email ${signals.contactEmails[0]} on ${lead.domain}.`);
+    }
+
     const mobileResponsive = signals.hasViewportMeta && signals.outdatedUISignals.indexOf(
       "Content overflows horizontally on mobile viewport"
     ) === -1;

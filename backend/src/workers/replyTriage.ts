@@ -39,9 +39,7 @@ async function pollAccount(account: SmtpAccountConfig): Promise<number> {
 
     try {
       const uids = await client.search({ seen: false }, { uid: true });
-      if (!uids || uids.length === 0) return 0;
-
-      for (const uid of uids) {
+      for (const uid of uids || []) {
         const message = await client.fetchOne(uid, { source: true }, { uid: true });
         if (!message || !message.source) continue;
 
@@ -53,7 +51,7 @@ async function pollAccount(account: SmtpAccountConfig): Promise<number> {
 
         if (!fromAddress) continue;
 
-        const lead = findLeadByDomainOrEmail("", fromAddress);
+        const lead = findLeadByDomainOrEmail(fromAddress.split("@")[1] ?? "", fromAddress);
         if (!lead) {
           logger.info(WORKER, `Reply from unknown sender ${fromAddress} on ${account.key}, ignoring.`);
           continue;

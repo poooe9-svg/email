@@ -259,8 +259,16 @@
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [domain, niche] = line.split(",").map((s) => s?.trim());
-        return { domain, niche: niche || undefined };
+        const parts = line.split(",").map((s) => s.trim());
+        // An email can sit in any column; the rest are domain, niche, contact name in order.
+        const contact_email = parts.find((p) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p));
+        const [domain, niche, contact_name] = parts.filter((p) => p !== contact_email);
+        return {
+          domain,
+          niche: niche || undefined,
+          contact_name: contact_name || undefined,
+          contact_email: contact_email || undefined,
+        };
       })
       .filter((l) => l.domain);
 

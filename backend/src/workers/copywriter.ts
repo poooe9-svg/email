@@ -13,6 +13,13 @@ export async function draftEmailForLead(lead: Lead): Promise<void> {
     return;
   }
 
+  if (!lead.contact_email) {
+    updateLeadStatus(lead.id, "SEND_FAILED");
+    emitAppEvent({ type: "lead_update", payload: { leadId: lead.id, status: "SEND_FAILED" } });
+    logger.warn(WORKER, `No contact email for ${lead.domain} (none given, none found on site). Skipping draft.`);
+    return;
+  }
+
   const flaws: string[] = JSON.parse(audit.flaws_json || "[]");
   if (flaws.length === 0) {
     logger.warn(WORKER, `Audit for ${lead.domain} found no usable flaws, skipping.`);
